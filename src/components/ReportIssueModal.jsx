@@ -20,6 +20,7 @@ const geocodeAddress = async (area, city) => {
   return null;
 };
 
+const ReportIssueModal = ({ isOpen, onClose, prefillData, initialData }) => {
 const ReportIssueModal = ({ isOpen, onClose, initialData }) => {
   const { token } = useAuth();
   const [view, setView] = useState('form'); // 'recommendation', 'form', 'success'
@@ -50,6 +51,26 @@ const ReportIssueModal = ({ isOpen, onClose, initialData }) => {
     volunteer: 'yes',
     updates: 'yes',
   });
+
+  // Apply prefill data when modal opens with AI data or initial data
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!prefillData && !initialData) return;
+    const combinedData = { ...initialData, ...prefillData };
+
+    setFormData(prev => ({
+      ...prev,
+      issueType: combinedData.issueType || prev.issueType,
+      description: combinedData.description || prev.description,
+      severity: combinedData.severity || prev.severity,
+      area: combinedData.area || prev.area,
+      city: combinedData.city || prev.city,
+      landmark: combinedData.landmark || prev.landmark,
+      duration: combinedData.duration || prev.duration,
+      email: combinedData.email || prev.email,
+      phone: combinedData.phone || prev.phone,
+    }));
+  }, [isOpen, prefillData, initialData]);
 
   // 🌍 Detect location and fetch nearby issues on open
   useEffect(() => {
