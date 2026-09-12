@@ -244,19 +244,6 @@ Please check the following:
 * [ ] My commit messages are meaningful.
 * [ ] My Pull Request clearly explains the changes.
 
-## Code of Conduct
-
-Please be respectful and constructive when interacting with other contributors.
-
-Harassment, discrimination, personal attacks, spam, and intentionally disruptive behavior are not acceptable.
-
-Contributors are expected to:
-
-* Respect different opinions and approaches.
-* Give constructive feedback.
-* Help other contributors when possible.
-* Keep discussions focused on improving the project.
-
 ## Questions and Discussions
 
 If you are unsure about an issue or contribution, open a GitHub issue and describe what you are trying to accomplish.
