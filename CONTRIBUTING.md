@@ -1,8 +1,8 @@
 # Contributing to CivicFix
 
-Thank you for your interest in contributing to **CivicTech**!
+Thank you for your interest in contributing to **CivicFix**!
 
-CivicTech is an AI-powered platform that helps citizens report local civic issues such as potholes, garbage, water leaks, and streetlight failures, while helping authorities manage and resolve complaints efficiently.
+CivicFix is an AI-powered platform that helps citizens report local civic issues such as potholes, garbage, water leaks, and streetlight failures, while helping authorities manage and resolve complaints efficiently.
 
 We welcome contributions in frontend development, backend development, AI/ML, UI/UX, documentation, testing, and other areas that improve the project.
 
