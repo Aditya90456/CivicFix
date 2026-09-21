@@ -21,7 +21,6 @@ const geocodeAddress = async (area, city) => {
 };
 
 const ReportIssueModal = ({ isOpen, onClose, prefillData, initialData }) => {
-const ReportIssueModal = ({ isOpen, onClose, initialData }) => {
   const { token } = useAuth();
   const [view, setView] = useState('form'); // 'recommendation', 'form', 'success'
   const [successType, setSuccessType] = useState('created'); // 'created' or 'joined'
