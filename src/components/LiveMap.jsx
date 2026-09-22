@@ -9,13 +9,23 @@ const getColor = (severity) => {
     if (s === "medium") return "orange";
     return "green";
 };
+const INDIAN_CITIES = [
+    { name: "Chennai", lat: 13.0827, lng: 80.2707 },
+    { name: "Mumbai", lat: 19.0760, lng: 72.8777 },
+    { name: "Delhi", lat: 28.6139, lng: 77.2090 },
+    { name: "Bengaluru", lat: 12.9716, lng: 77.5946 },
+    { name: "Hyderabad", lat: 17.3850, lng: 78.4867 },
+    { name: "Kolkata", lat: 22.5726, lng: 88.3639 },
+    { name: "Pune", lat: 18.5204, lng: 73.8567 },
+    { name: "Ahmedabad", lat: 23.0225, lng: 72.5714 },
+];
 
-// Recenter map to user's location
+// Recenter map to specified location
 const RecenterMap = ({ coords }) => {
     const map = useMap();
     useEffect(() => {
-        if (coords) {
-            map.setView([coords.lat, coords.lng], 15);
+        if (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lng)) {
+            map.setView([coords.lat, coords.lng], coords.zoom || 15);
         }
     }, [coords, map]);
     return null;
@@ -24,8 +34,12 @@ const RecenterMap = ({ coords }) => {
 const LiveMap = () => {
     const [reports, setReports] = useState([]);
     const [userLocation, setUserLocation] = useState(null);
+    const [savedUserLocation, setSavedUserLocation] = useState(null);
     const [locationError, setLocationError] = useState(null);
     const [locating, setLocating] = useState(false);
+    const [mode, setMode] = useState("city"); // "myLocation" | "city"
+    const [selectedCity, setSelectedCity] = useState("Chennai");
+    const [activeCenter, setActiveCenter] = useState({ lat: 13.0827, lng: 80.2707, zoom: 13 });
 
     // Load reports from both API (backend) and localStorage (immediate local)
     const loadReports = useCallback(async () => {
@@ -52,11 +66,11 @@ const LiveMap = () => {
                 localStorage.setItem('civicfix_issues', JSON.stringify(dummyReports));
             }
         }
-        
+
         // Merge them, avoiding duplicates by complaint ID
         const merged = [...apiReports];
         const apiIds = new Set(apiReports.map(r => r.complaint_id || r.id));
-        
+
         localReports.forEach(r => {
             const id = r.complaint_id || r.id;
             if (id && !apiIds.has(id)) {
@@ -81,13 +95,13 @@ const LiveMap = () => {
 
     useEffect(() => {
         loadReports();
-        
+
         // Listen for new reports from the modal in the same tab
         window.addEventListener('civicfix:complaint-created', loadReports);
-        
+
         // Refresh periodically for reports from other users
         const interval = setInterval(loadReports, 10000);
-        
+
         return () => {
             window.removeEventListener('civicfix:complaint-created', loadReports);
             clearInterval(interval);
@@ -96,9 +110,9 @@ const LiveMap = () => {
 
     // Auto-request location on mount
     useEffect(() => {
-
         if (!navigator.geolocation) {
             setLocationError("Geolocation is not supported by your browser.");
+            setMode("city");
             return;
         }
         setLocating(true);
@@ -109,24 +123,31 @@ const LiveMap = () => {
                     lng: position.coords.longitude,
                 };
                 setUserLocation(coords);
+                setSavedUserLocation(coords);
+                setMode("myLocation");
+                setActiveCenter({ lat: coords.lat, lng: coords.lng, zoom: 15 });
                 setLocating(false);
+                setLocationError(null);
                 // Save to localStorage so report form can use it
                 localStorage.setItem("userLocation", JSON.stringify(coords));
             },
             (error) => {
                 setLocating(false);
+                setMode("city");
+                setUserLocation(null);
+                setSavedUserLocation(null);
                 switch (error.code) {
                     case error.PERMISSION_DENIED:
-                        setLocationError("Location access denied. Please allow location in browser settings.");
+                        setLocationError("Location access denied. Please select a city.");
                         break;
                     case error.POSITION_UNAVAILABLE:
-                        setLocationError("Location unavailable. Showing default map.");
+                        setLocationError("Location unavailable. Please select a city.");
                         break;
                     case error.TIMEOUT:
-                        setLocationError("Location request timed out. Showing default map.");
+                        setLocationError("Location request timed out. Please select a city.");
                         break;
                     default:
-                        setLocationError("Could not get location.");
+                        setLocationError("Could not get location. Please select a city.");
                 }
             },
             {
@@ -137,6 +158,34 @@ const LiveMap = () => {
         );
     }, []);
 
+    const handleCityChange = (cityName) => {
+        setSelectedCity(cityName);
+        setMode("city");
+        setUserLocation(null);
+        setLocationError(null);
+        const city = INDIAN_CITIES.find(c => c.name === cityName);
+        if (city) {
+            setActiveCenter({ lat: city.lat, lng: city.lng, zoom: 13 });
+        }
+    };
+
+    const switchToMyLocation = () => {
+        if (savedUserLocation) {
+            setMode("myLocation");
+            setUserLocation(savedUserLocation);
+            setLocationError(null);
+            setActiveCenter({ lat: savedUserLocation.lat, lng: savedUserLocation.lng, zoom: 15 });
+        }
+    };
+
+    const switchToCityMode = () => {
+        setMode("city");
+        setUserLocation(null);
+        setLocationError(null);
+        const city = INDIAN_CITIES.find(c => c.name === selectedCity) || INDIAN_CITIES[0];
+        setActiveCenter({ lat: city.lat, lng: city.lng, zoom: 13 });
+    };
+
     // Group reports by same location
     const grouped = {};
     reports.forEach((r) => {
@@ -146,8 +195,6 @@ const LiveMap = () => {
         grouped[key].push(r);
     });
 
-    const defaultCenter = [13.0827, 80.2707]; // Chennai
-
     return (
         <div style={{ height: "650px", padding: "20px" }}>
             <h2 style={{ textAlign: "center" }}>🗺️ Live Issue Map</h2>
@@ -155,9 +202,91 @@ const LiveMap = () => {
             {/* Status bar */}
             <div style={{ textAlign: "center", marginBottom: "6px", fontSize: "13px", color: "#555" }}>
                 {locating && "📍 Getting your location..."}
-                {!locating && userLocation && `📍 Location detected — showing issues near you`}
-                {!locating && locationError && `⚠️ ${locationError}`}
+                {!locating && mode === "myLocation" && userLocation && "📍 Location detected — showing issues near you"}
+                {!locating && mode === "city" && locationError && `⚠️ ${locationError}`}
+                {!locating && mode === "city" && !locationError && `🏙️ Showing issues for ${selectedCity}`}
             </div>
+
+            {/* Mode Controls */}
+            {!locating && (
+                <div style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "10px",
+                    marginBottom: "10px",
+                    fontSize: "14px"
+                }}>
+                    {mode === "myLocation" ? (
+                        <>
+                            <span style={{ fontWeight: "500", color: "#1a73e8" }}>
+                                📍 Mode: My Location
+                            </span>
+                            <button
+                                type="button"
+                                onClick={switchToCityMode}
+                                style={{
+                                    padding: "6px 12px",
+                                    borderRadius: "6px",
+                                    border: "1px solid #ccc",
+                                    backgroundColor: "#fff",
+                                    color: "#333",
+                                    fontSize: "13px",
+                                    cursor: "pointer",
+                                    fontWeight: "500"
+                                }}
+                            >
+                                🏙️ Choose City
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <label htmlFor="city-select" style={{ fontWeight: "500", color: "#333" }}>
+                                🏙️ Select City:
+                            </label>
+                            <select
+                                id="city-select"
+                                value={selectedCity}
+                                onChange={(e) => handleCityChange(e.target.value)}
+                                style={{
+                                    padding: "6px 12px",
+                                    borderRadius: "6px",
+                                    border: "1px solid #ccc",
+                                    backgroundColor: "#fff",
+                                    fontSize: "14px",
+                                    cursor: "pointer",
+                                    outline: "none"
+                                }}
+                            >
+                                {INDIAN_CITIES.map((city) => (
+                                    <option key={city.name} value={city.name}>
+                                        {city.name}
+                                    </option>
+                                ))}
+                            </select>
+                            {savedUserLocation && (
+                                <button
+                                    type="button"
+                                    onClick={switchToMyLocation}
+                                    style={{
+                                        padding: "6px 12px",
+                                        borderRadius: "6px",
+                                        border: "1px solid #1a73e8",
+                                        backgroundColor: "#e8f0fe",
+                                        color: "#1a73e8",
+                                        fontSize: "13px",
+                                        cursor: "pointer",
+                                        fontWeight: "500"
+                                    }}
+                                >
+                                    📍 My Location
+                                </button>
+                            )}
+                        </>
+                    )}
+                </div>
+            )}
 
             {/* Legend + count */}
             <div style={{ textAlign: "center", marginBottom: "10px", fontSize: "14px" }}>
@@ -170,17 +299,17 @@ const LiveMap = () => {
             </div>
 
             <MapContainer
-                center={userLocation ? [userLocation.lat, userLocation.lng] : defaultCenter}
-                zoom={13}
+                center={[activeCenter.lat, activeCenter.lng]}
+                zoom={activeCenter.zoom || 13}
                 style={{ height: "550px", borderRadius: "12px" }}
             >
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-                {/* Recenter when location is obtained */}
-                {userLocation && <RecenterMap coords={userLocation} />}
+                {/* Recenter map whenever activeCenter changes */}
+                <RecenterMap coords={activeCenter} />
 
-                {/* User's own location marker */}
-                {userLocation && (
+                {/* User's own location marker (only rendered in myLocation mode) */}
+                {userLocation && mode === "myLocation" && (
                     <CircleMarker
                         center={[userLocation.lat, userLocation.lng]}
                         radius={10}
