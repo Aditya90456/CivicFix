@@ -24,8 +24,8 @@ const INDIAN_CITIES = [
 const RecenterMap = ({ coords }) => {
     const map = useMap();
     useEffect(() => {
-        if (coords) {
-            map.setView([coords.lat, coords.lng], 13);
+        if (coords && coords.lat && coords.lng) {
+            map.setView([coords.lat, coords.lng], coords.zoom || 15);
         }
     }, [coords, map]);
     return null;
@@ -34,10 +34,12 @@ const RecenterMap = ({ coords }) => {
 const LiveMap = () => {
     const [reports, setReports] = useState([]);
     const [userLocation, setUserLocation] = useState(null);
+    const [savedUserLocation, setSavedUserLocation] = useState(null);
     const [locationError, setLocationError] = useState(null);
     const [locating, setLocating] = useState(false);
+    const [mode, setMode] = useState("city"); // "myLocation" | "city"
     const [selectedCity, setSelectedCity] = useState("Chennai");
-    const [activeCenter, setActiveCenter] = useState({ lat: 13.0827, lng: 80.2707 });
+    const [activeCenter, setActiveCenter] = useState({ lat: 13.0827, lng: 80.2707, zoom: 13 });
 
     // Load reports from both API (backend) and localStorage (immediate local)
     const loadReports = useCallback(async () => {
@@ -108,9 +110,9 @@ const LiveMap = () => {
 
     // Auto-request location on mount
     useEffect(() => {
-
         if (!navigator.geolocation) {
             setLocationError("Geolocation is not supported by your browser.");
+            setMode("city");
             return;
         }
         setLocating(true);
@@ -121,16 +123,22 @@ const LiveMap = () => {
                     lng: position.coords.longitude,
                 };
                 setUserLocation(coords);
-                setActiveCenter(coords);
+                setSavedUserLocation(coords);
+                setMode("myLocation");
+                setActiveCenter({ lat: coords.lat, lng: coords.lng, zoom: 15 });
                 setLocating(false);
+                setLocationError(null);
                 // Save to localStorage so report form can use it
                 localStorage.setItem("userLocation", JSON.stringify(coords));
             },
             (error) => {
                 setLocating(false);
+                setMode("city");
+                setUserLocation(null);
+                setSavedUserLocation(null);
                 switch (error.code) {
                     case error.PERMISSION_DENIED:
-                        setLocationError("Location access denied. Please allow location in browser settings.");
+                        setLocationError("Location access denied. Please select a city.");
                         break;
                     case error.POSITION_UNAVAILABLE:
                         setLocationError("Location unavailable. Please select a city.");
@@ -150,13 +158,32 @@ const LiveMap = () => {
         );
     }, []);
 
-    const handleCityChange = (e) => {
-        const cityName = e.target.value;
+    const handleCityChange = (cityName) => {
         setSelectedCity(cityName);
+        setMode("city");
+        setUserLocation(null);
+        setLocationError(null);
         const city = INDIAN_CITIES.find(c => c.name === cityName);
         if (city) {
-            setActiveCenter({ lat: city.lat, lng: city.lng });
+            setActiveCenter({ lat: city.lat, lng: city.lng, zoom: 13 });
         }
+    };
+
+    const switchToMyLocation = () => {
+        if (savedUserLocation) {
+            setMode("myLocation");
+            setUserLocation(savedUserLocation);
+            setLocationError(null);
+            setActiveCenter({ lat: savedUserLocation.lat, lng: savedUserLocation.lng, zoom: 15 });
+        }
+    };
+
+    const switchToCityMode = () => {
+        setMode("city");
+        setUserLocation(null);
+        setLocationError(null);
+        const city = INDIAN_CITIES.find(c => c.name === selectedCity) || INDIAN_CITIES[0];
+        setActiveCenter({ lat: city.lat, lng: city.lng, zoom: 13 });
     };
 
     // Group reports by same location
@@ -175,62 +202,91 @@ const LiveMap = () => {
             {/* Status bar */}
             <div style={{ textAlign: "center", marginBottom: "6px", fontSize: "13px", color: "#555" }}>
                 {locating && "📍 Getting your location..."}
-                {!locating && userLocation && `📍 Location detected — showing issues near you`}
-                {!locating && locationError && `⚠️ ${locationError}`}
+                {!locating && mode === "myLocation" && userLocation && "📍 Location detected — showing issues near you"}
+                {!locating && mode === "city" && locationError && `⚠️ ${locationError}`}
+                {!locating && mode === "city" && !locationError && `🏙️ Showing issues for ${selectedCity}`}
             </div>
 
-            {/* City Selector Fallback */}
-            <div style={{
-                display: "flex",
-                flexWrap: "wrap",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "10px",
-                marginBottom: "10px",
-                fontSize: "14px"
-            }}>
-                <label htmlFor="city-select" style={{ fontWeight: "500", color: "#333" }}>
-                    🏙️ Select City:
-                </label>
-                <select
-                    id="city-select"
-                    value={selectedCity}
-                    onChange={handleCityChange}
-                    style={{
-                        padding: "6px 12px",
-                        borderRadius: "6px",
-                        border: "1px solid #ccc",
-                        backgroundColor: "#fff",
-                        fontSize: "14px",
-                        cursor: "pointer",
-                        outline: "none"
-                    }}
-                >
-                    {INDIAN_CITIES.map((city) => (
-                        <option key={city.name} value={city.name}>
-                            {city.name}
-                        </option>
-                    ))}
-                </select>
-                {userLocation && (
-                    <button
-                        type="button"
-                        onClick={() => setActiveCenter(userLocation)}
-                        style={{
-                            padding: "6px 12px",
-                            borderRadius: "6px",
-                            border: "1px solid #1a73e8",
-                            backgroundColor: "#e8f0fe",
-                            color: "#1a73e8",
-                            fontSize: "13px",
-                            cursor: "pointer",
-                            fontWeight: "500"
-                        }}
-                    >
-                        📍 My Location
-                    </button>
-                )}
-            </div>
+            {/* Mode Controls */}
+            {!locating && (
+                <div style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "10px",
+                    marginBottom: "10px",
+                    fontSize: "14px"
+                }}>
+                    {mode === "myLocation" ? (
+                        <>
+                            <span style={{ fontWeight: "500", color: "#1a73e8" }}>
+                                📍 Mode: My Location
+                            </span>
+                            <button
+                                type="button"
+                                onClick={switchToCityMode}
+                                style={{
+                                    padding: "6px 12px",
+                                    borderRadius: "6px",
+                                    border: "1px solid #ccc",
+                                    backgroundColor: "#fff",
+                                    color: "#333",
+                                    fontSize: "13px",
+                                    cursor: "pointer",
+                                    fontWeight: "500"
+                                }}
+                            >
+                                🏙️ Choose City
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <label htmlFor="city-select" style={{ fontWeight: "500", color: "#333" }}>
+                                🏙️ Select City:
+                            </label>
+                            <select
+                                id="city-select"
+                                value={selectedCity}
+                                onChange={(e) => handleCityChange(e.target.value)}
+                                style={{
+                                    padding: "6px 12px",
+                                    borderRadius: "6px",
+                                    border: "1px solid #ccc",
+                                    backgroundColor: "#fff",
+                                    fontSize: "14px",
+                                    cursor: "pointer",
+                                    outline: "none"
+                                }}
+                            >
+                                {INDIAN_CITIES.map((city) => (
+                                    <option key={city.name} value={city.name}>
+                                        {city.name}
+                                    </option>
+                                ))}
+                            </select>
+                            {savedUserLocation && (
+                                <button
+                                    type="button"
+                                    onClick={switchToMyLocation}
+                                    style={{
+                                        padding: "6px 12px",
+                                        borderRadius: "6px",
+                                        border: "1px solid #1a73e8",
+                                        backgroundColor: "#e8f0fe",
+                                        color: "#1a73e8",
+                                        fontSize: "13px",
+                                        cursor: "pointer",
+                                        fontWeight: "500"
+                                    }}
+                                >
+                                    📍 My Location
+                                </button>
+                            )}
+                        </>
+                    )}
+                </div>
+            )}
 
             {/* Legend + count */}
             <div style={{ textAlign: "center", marginBottom: "10px", fontSize: "14px" }}>
@@ -244,7 +300,7 @@ const LiveMap = () => {
 
             <MapContainer
                 center={[activeCenter.lat, activeCenter.lng]}
-                zoom={13}
+                zoom={activeCenter.zoom || 13}
                 style={{ height: "550px", borderRadius: "12px" }}
             >
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
@@ -252,8 +308,8 @@ const LiveMap = () => {
                 {/* Recenter map whenever activeCenter changes */}
                 <RecenterMap coords={activeCenter} />
 
-                {/* User's own location marker */}
-                {userLocation && (
+                {/* User's own location marker (only rendered in myLocation mode) */}
+                {userLocation && mode === "myLocation" && (
                     <CircleMarker
                         center={[userLocation.lat, userLocation.lng]}
                         radius={10}
