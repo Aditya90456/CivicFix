@@ -24,7 +24,7 @@ const INDIAN_CITIES = [
 const RecenterMap = ({ coords }) => {
     const map = useMap();
     useEffect(() => {
-        if (coords && coords.lat && coords.lng) {
+        if (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lng)) {
             map.setView([coords.lat, coords.lng], coords.zoom || 15);
         }
     }, [coords, map]);
